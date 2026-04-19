@@ -59,6 +59,7 @@ jobs:
         uses: TinyTapeout/tt-gds-action@ttgf26a
         with:
           pdk: gf180mcuD
+          librelane-version: 2.4.2
 
   precheck:
     needs: gds
