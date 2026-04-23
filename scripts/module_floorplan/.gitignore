@@ -1,0 +1,5 @@
+*.svg
+*.json
+*.md
+!/.gitignore
+!/generate_module_floorplan.py
