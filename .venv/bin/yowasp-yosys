@@ -1,0 +1,6 @@
+#!/home/tonyzhu/risc-v-ttgf/.venv/bin/python3
+import sys
+from yowasp_yosys import _run_yosys_argv
+if __name__ == '__main__':
+    sys.argv[0] = sys.argv[0].removesuffix('.exe')
+    sys.exit(_run_yosys_argv())

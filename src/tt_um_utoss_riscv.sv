@@ -31,9 +31,10 @@ module tt_um_utoss_riscv (
   logic  [3:0] memory__write_enable;
   data_t       memory__read_data;
 
-  MA #( .SIZE ( 16 ) )
+  MA #( .SIZE ( 64 ) )
     memory
       ( .clk          ( clk                  )
+      , .rst_n        ( rst_n                 )
       , .address      ( memory__address      )
       , .write_data   ( memory__write_data   )
       , .write_enable ( memory__write_enable )
