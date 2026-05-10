@@ -52,7 +52,7 @@ module tt_um_utoss_riscv (
   )
   u_uart (
         .clk                ( clk           )
-      , .rst                ( rst_n         )
+      , .rst                ( ~rst_n        )
       , .i_data_s           ( uart_tx_data  )
       , .i_valid_s          ( uart_tx_valid )
       , .o_ready_s          ( uart_tx_ready )
@@ -75,7 +75,7 @@ module tt_um_utoss_riscv (
 
   uart_bus_master u_master (
         .clk                 ( clk              )
-      , .rst                 ( rst_n            )
+      , .rst                 ( ~rst_n           )
       , .rx_data             ( uart_rx_data     )
       , .rx_valid            ( uart_rx_valid    )
       , .rx_ready            ( uart_rx_ready    )
@@ -91,7 +91,7 @@ module tt_um_utoss_riscv (
       , .hold_core           ( hold_core        )
   );
 
-  wire core_reset = rst_n | hold_core;
+  wire core_reset = ~rst_n | hold_core;
 
   addr_t bus_addr;
   data_t bus_write_data;
@@ -112,7 +112,7 @@ module tt_um_utoss_riscv (
 
   utoss_riscv core
     ( .clk                 ( clk                  )
-    , .reset               ( ~core_reset          )
+    , .reset               ( core_reset           )
     , .memory__address     ( core_addr            )
     , .memory__write_data  ( core_write_data      )
     , .memory__write_enable( core_write_enable    )
