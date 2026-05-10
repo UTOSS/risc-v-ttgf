@@ -56,6 +56,12 @@ uart-test:
 	make -B -f Makefile SIM=verilator VERILATOR_TRACE=1 TEST=test_uart
 	@echo "Verilator simulation completed"
 
+# Run cocotb UART-only tests (raw uart vs tb_uart.sv)
+uart-test-uart:
+	@echo "Running cocotb UART-only testbench (tb_uart + test_uart.py)..."
+	make -B -f Makefile SIM=verilator VERILATOR_TRACE=1 TOPLEVEL=tb_uart COCOTB_TEST_MODULES=test_uart
+	@echo "Verilator simulation completed"
+
 # Run cocotb UART tests with specific test
 uart-test-single:
 	@if [ -z "$(TEST_NAME)" ]; then \
@@ -69,5 +75,5 @@ uart-verify: uart-check
 	@echo "UART testbench files verified and ready"
 	@echo "To run cocotb tests:     make uart-test"
 
-.PHONY: uart-test uart-test-single uart-verify
+.PHONY: uart-test uart-test-uart uart-test-single uart-verify
 

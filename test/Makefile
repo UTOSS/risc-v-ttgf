@@ -38,9 +38,12 @@ endif
 # Allow sharing configuration between design and testbench via `include`:
 COMPILE_ARGS 		+= -I$(SRC_DIR) -I$(SRC_DIR)/utoss-risc-v
 
-# Include the testbench sources:
-VERILOG_SOURCES += $(PWD)/tb.sv
-TOPLEVEL = tb
+# Allow overriding which testbench file is used via TOPLEVEL (command-line)
+TOPLEVEL ?= tb
+
+# Include the testbench sources (use TOPLEVEL variable so tb_uart.sv can be selected):
+VERILOG_SOURCES += $(PWD)/$(TOPLEVEL).sv
+
 
 # List test modules to run, separated by commas and without the .py suffix:
 COCOTB_TEST_MODULES = test
