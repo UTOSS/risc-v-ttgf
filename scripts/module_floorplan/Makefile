@@ -1,10 +1,8 @@
 PYTHON ?= python3
 SCRIPT := generate_module_floorplan.py
 REPORTS := \
-	module_floorplan_depth1_cells.svg \
-	module_floorplan_depth1_tiles.svg \
-	module_floorplan_depth2_cells.svg \
-	module_floorplan_depth2_tiles.svg \
+	module_floorplan_cells.svg \
+	module_floorplan_tiles.svg \
 	summary.json \
 	summary.md
 

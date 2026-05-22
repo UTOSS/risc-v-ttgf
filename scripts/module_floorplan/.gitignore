@@ -1,5 +1,7 @@
 *.svg
 *.json
 *.md
+__pycache__/
+*.pyc
 !/.gitignore
 !/generate_module_floorplan.py

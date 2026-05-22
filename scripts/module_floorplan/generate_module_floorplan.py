@@ -14,6 +14,7 @@ DEFAULT_DEF = RUNS_DIR / "final" / "def" / "tt_um_utoss_riscv.def"
 DEFAULT_NETLIST = RUNS_DIR / "final" / "nl" / "tt_um_utoss_riscv.nl.v"
 DEFAULT_RESOLVED = RUNS_DIR / "resolved.json"
 DEFAULT_OUT_DIR = Path(__file__).resolve().parent
+DEFAULT_HINT_JSON = RUNS_DIR / "05-yosys-jsonheader" / "tt_um_utoss_riscv.h.json"
 
 SPECIAL_GROUP_ORDER = ["physical_only", "mixed", "ungrouped", "other"]
 SPECIAL_GROUP_LABELS = {
@@ -53,13 +54,13 @@ def parse_args():
     parser.add_argument("--netlist", type=Path, default=DEFAULT_NETLIST)
     parser.add_argument("--resolved", type=Path, default=DEFAULT_RESOLVED)
     parser.add_argument("--lef", type=Path, default=None)
+    parser.add_argument("--hint-json", type=Path, default=DEFAULT_HINT_JSON)
     parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR)
     parser.add_argument(
-        "--depths",
+        "--depth",
         type=int,
-        nargs="+",
-        default=[1, 2],
-        help="Hierarchy depths to render, e.g. 1 for top-level, 2 for submodules.",
+        default=2,
+        help="Recovered ownership depth to render.",
     )
     parser.add_argument(
         "--render",
@@ -173,6 +174,34 @@ def iter_cell_entries(netlist_text: str):
             buffer = []
 
 
+def parse_text_netlist_instances(netlist_text: str):
+    instances = []
+    cell_pattern = re.compile(r"^\s*(\S+)\s+(\S+)\s*\(")
+    pin_pattern = re.compile(r"\.\s*([A-Za-z0-9_]+)\s*\(\s*(.*?)\s*\)")
+
+    for entry in iter_cell_entries(netlist_text):
+        head = cell_pattern.match(entry)
+        if not head:
+            continue
+        master, instance = head.groups()
+        connections = {}
+        connected_nets = []
+        for pin, expr in pin_pattern.findall(entry):
+            net_name = normalize_expr(expr)
+            if net_name:
+                connections[pin] = net_name
+                connected_nets.append(net_name)
+        instances.append(
+            {
+                "name": instance,
+                "master": master,
+                "connections": connections,
+                "nets": connected_nets,
+            }
+        )
+    return instances
+
+
 def normalize_expr(expr: str):
     expr = expr.strip()
     if not expr:
@@ -184,13 +213,62 @@ def normalize_expr(expr: str):
     return expr.strip()
 
 
+def strip_indices(text: str):
+    return re.sub(r"\[[^]]*\]", "", text)
+
+
+def normalize_key(text: str):
+    return re.sub(r"[^a-z0-9]+", "", text.lower())
+
+
+def split_group_path(text: str, separator: str):
+    parts = []
+    for raw in text.split(separator):
+        part = strip_indices(raw.strip().lstrip("\\"))
+        if not part:
+            continue
+        parts.append(part)
+    return parts
+
+
+def group_specificity(group_name: str):
+    if not group_name or group_name in SPECIAL_GROUP_ORDER:
+        return 0
+    return len(group_name.split("."))
+
+
+def can_override_group(group_name: str, depth: int):
+    return group_name in SPECIAL_GROUP_ORDER or group_specificity(group_name) < depth
+
+
+def is_propagation_candidate(group_name: str):
+    return group_name in {"mixed", "ungrouped", "other"}
+
+
+def signal_leaf_key(name: str):
+    if not name:
+        return None
+    text = name.strip()
+    if " " in text:
+        text = text.split()[-1]
+    if "." in text:
+        text = text.split(".")[-1]
+    text = strip_indices(text.lstrip("\\"))
+    key = normalize_key(text)
+    if len(key) < 3 or key.startswith("net"):
+        return None
+    return key
+
+
 def group_from_net(net_name: str, depth: int):
     if not net_name or "." not in net_name:
         return None
-    first = net_name.split(".", 1)[0]
+    parts = split_group_path(net_name, ".")
+    if not parts:
+        return None
+    first = parts[0]
     if first.startswith("_") or first.startswith("net"):
         return None
-    parts = net_name.split(".")
     if len(parts) == 1 or depth <= 1:
         return parts[0]
 
@@ -227,40 +305,26 @@ def classify_instance(connected_nets, master: str, depth: int):
     return "mixed"
 
 
-def parse_netlist_cells(netlist_text: str, depths):
+def parse_netlist_cells(netlist_text: str, depth: int):
     cells = {}
-    cell_pattern = re.compile(r"^\s*(\S+)\s+(\S+)\s*\(")
-    pin_pattern = re.compile(r"\.\s*([A-Za-z0-9_]+)\s*\(\s*(.*?)\s*\)")
-
-    for entry in iter_cell_entries(netlist_text):
-        head = cell_pattern.match(entry)
-        if not head:
-            continue
-        master, instance = head.groups()
-        connected_nets = []
-        for _pin, expr in pin_pattern.findall(entry):
-            net_name = normalize_expr(expr)
-            if net_name:
-                connected_nets.append(net_name)
+    for parsed in parse_text_netlist_instances(netlist_text):
+        master = parsed["master"]
+        instance = parsed["name"]
+        connected_nets = parsed["nets"]
         cells[instance] = {
             "master": master,
             "nets": connected_nets,
-            "seed_assignments": {
-                depth: classify_instance(
-                    connected_nets=connected_nets,
-                    master=master,
-                    depth=depth,
-                )
-                for depth in depths
-            },
+            "seed_assignment": classify_instance(
+                connected_nets=connected_nets,
+                master=master,
+                depth=depth,
+            ),
         }
     return cells
 
 
 def propagate_assignments(cell_info, depth, rounds=8, max_net_degree=24):
-    assignments = {
-        instance: info["seed_assignments"][depth] for instance, info in cell_info.items()
-    }
+    assignments = {instance: info["seed_assignment"] for instance, info in cell_info.items()}
     net_to_instances = defaultdict(list)
     for instance, info in cell_info.items():
         for net_name in set(info["nets"]):
@@ -270,7 +334,7 @@ def propagate_assignments(cell_info, depth, rounds=8, max_net_degree=24):
         updates = {}
         for instance, info in cell_info.items():
             current = assignments.get(instance, "ungrouped")
-            if current not in {"ungrouped", "mixed"}:
+            if not is_propagation_candidate(current):
                 continue
             if is_physical_only_master(info["master"]):
                 continue
@@ -284,7 +348,7 @@ def propagate_assignments(cell_info, depth, rounds=8, max_net_degree=24):
                     if other == instance:
                         continue
                     other_group = assignments.get(other, "ungrouped")
-                    if other_group in SPECIAL_GROUP_ORDER:
+                    if not other_group or other_group in SPECIAL_GROUP_ORDER:
                         continue
                     neighbor_groups[other_group] += 1
 
@@ -293,6 +357,175 @@ def propagate_assignments(cell_info, depth, rounds=8, max_net_degree=24):
             common = neighbor_groups.most_common(2)
             top_group, top_count = common[0]
             next_count = common[1][1] if len(common) > 1 else 0
+            if top_count > next_count:
+                updates[instance] = top_group
+
+        if not updates:
+            break
+        assignments.update(updates)
+
+    return assignments
+
+
+def group_from_hdlname(hdlname: str, depth: int):
+    if not hdlname:
+        return None
+    parts = split_group_path(hdlname, " ")
+    if len(parts) <= 1:
+        return None
+    module_depth = min(depth, len(parts) - 1)
+    return ".".join(parts[:module_depth])
+
+
+def parse_flattened_group(cell_name: str, depth: int):
+    if not cell_name.startswith("$flatten\\"):
+        return None
+    body = cell_name[len("$flatten\\") :]
+    path = body.split(".$", 1)[0]
+    parts = split_group_path(path, ".")
+    if not parts:
+        return None
+    return ".".join(parts[: min(depth, len(parts))])
+
+
+def build_hint_token_weights(hint_json_path: Path, depth: int):
+    hint_json = json.loads(hint_json_path.read_text())
+    module = hint_json["modules"]["tt_um_utoss_riscv"]
+
+    bit_to_names = defaultdict(list)
+    for net_name, net_info in module.get("netnames", {}).items():
+        candidates = []
+        hdlname = net_info.get("attributes", {}).get("hdlname")
+        if hdlname:
+            candidates.append(hdlname)
+        candidates.append(net_name)
+        for bit in net_info.get("bits", []):
+            if isinstance(bit, int):
+                bit_to_names[bit].extend(candidates)
+
+    group_token_counts = defaultdict(Counter)
+    for cell_name, cell_info in module.get("cells", {}).items():
+        group = parse_flattened_group(cell_name, depth=depth)
+        if not group or group_specificity(group) < depth:
+            continue
+
+        cell_tokens = set()
+        for bits in cell_info.get("connections", {}).values():
+            for bit in bits:
+                if not isinstance(bit, int):
+                    continue
+                for candidate in bit_to_names.get(bit, []):
+                    token = signal_leaf_key(candidate)
+                    if token:
+                        cell_tokens.add(token)
+
+        for token in cell_tokens:
+            group_token_counts[group][token] += 1
+
+    token_to_groups = defaultdict(Counter)
+    for group, token_counts in group_token_counts.items():
+        for token, count in token_counts.items():
+            token_to_groups[token][group] += count
+
+    token_weights = {}
+    for token, group_counts in token_to_groups.items():
+        total = sum(group_counts.values())
+        ranked = group_counts.most_common()
+        if total < 2 or not ranked:
+            continue
+        top_group, top_count = ranked[0]
+        if top_count / total < 0.55:
+            continue
+        token_weights[token] = {
+            group: count / total for group, count in group_counts.items()
+        }
+
+    return token_weights
+
+
+def build_signal_seed_assignments(cell_info, direct_assignments, token_weights, depth: int):
+    seeds = {}
+    for instance, info in cell_info.items():
+        current = direct_assignments.get(instance, "ungrouped")
+        if is_physical_only_master(info["master"]):
+            continue
+
+        scores = Counter()
+        seen_tokens = set()
+        for net_name in info["nets"]:
+            token = signal_leaf_key(net_name)
+            if not token or token in seen_tokens:
+                continue
+            seen_tokens.add(token)
+            for group, weight in token_weights.get(token, {}).items():
+                scores[group] += weight
+
+        if not scores:
+            continue
+
+        ranked = scores.most_common(2)
+        top_group, top_score = ranked[0]
+        next_score = ranked[1][1] if len(ranked) > 1 else 0.0
+        current_score = scores.get(current, 0.0)
+        if top_group == current:
+            continue
+
+        is_strong_new_signal = top_score >= 0.75 and top_score > next_score * 1.2
+        is_confident_override = (
+            top_score >= 0.75
+            and top_score >= current_score + 0.35
+            and top_score > next_score * 1.1
+        )
+        if can_override_group(current, depth):
+            should_assign = is_strong_new_signal
+        else:
+            should_assign = is_confident_override
+
+        if should_assign:
+            seeds[instance] = top_group
+
+    return seeds
+
+
+def propagate_hint_assignments(
+    cell_info,
+    assignments,
+    depth,
+    rounds=10,
+    max_net_degree=24,
+):
+    net_to_instances = defaultdict(list)
+    for instance, info in cell_info.items():
+        for net_name in set(info["nets"]):
+            net_to_instances[net_name].append(instance)
+
+    for _ in range(rounds):
+        updates = {}
+        for instance, info in cell_info.items():
+            current = assignments.get(instance, "ungrouped")
+            if not is_propagation_candidate(current):
+                continue
+            if is_physical_only_master(info["master"]):
+                continue
+
+            neighbor_groups = Counter()
+            for net_name in set(info["nets"]):
+                members = net_to_instances[net_name]
+                if len(members) <= 1 or len(members) > max_net_degree:
+                    continue
+                for other in members:
+                    if other == instance:
+                        continue
+                    other_group = assignments.get(other, "ungrouped")
+                    if not other_group or other_group in SPECIAL_GROUP_ORDER:
+                        continue
+                    neighbor_groups[other_group] += 1
+
+            if not neighbor_groups:
+                continue
+
+            top_group, top_count = neighbor_groups.most_common(1)[0]
+            next_count = neighbor_groups.most_common(2)[1][1] if len(neighbor_groups) > 1 else 0
             if top_count > next_count:
                 updates[instance] = top_group
 
@@ -389,20 +622,21 @@ def render_cells_svg(path, diearea_db, instances, assignments, stats, colors, ti
     width = 1220
     legend_w = 260
     header_h = 40
+    left_margin = 10
     height = max(320, int(width * die_h_um / max(die_w_um, 1.0)))
     scale_x = width / max(die_w_um, 1.0)
     scale_y = height / max(die_h_um, 1.0)
 
     lines = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width + legend_w}" height="{height + header_h + 10}" viewBox="0 0 {width + legend_w} {height + header_h + 10}">',
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width + left_margin + legend_w}" height="{height + header_h + 10}" viewBox="0 0 {width + left_margin + legend_w} {height + header_h + 10}">',
         '<rect width="100%" height="100%" fill="#fbfbfc"/>',
         f'<text x="12" y="24" font-family="Helvetica" font-size="18" font-weight="bold">{title}</text>',
-        f'<rect x="0" y="{header_h}" width="{width}" height="{height}" fill="#ffffff" stroke="#222" stroke-width="1"/>',
+        f'<rect x="{left_margin}" y="{header_h}" width="{width}" height="{height}" fill="#ffffff" stroke="#222" stroke-width="1"/>',
     ]
 
     for inst in instances:
         group = assignments.get(inst["name"], "ungrouped")
-        x = (inst["x"] - llx) / 2000.0 * scale_x
+        x = left_margin + (inst["x"] - llx) / 2000.0 * scale_x
         y = header_h + height - (((inst["y"] - lly) / 2000.0) + inst["height_um"]) * scale_y
         w = max(0.5, inst["width_um"] * scale_x)
         h = max(0.5, inst["height_um"] * scale_y)
@@ -412,20 +646,7 @@ def render_cells_svg(path, diearea_db, instances, assignments, stats, colors, ti
             f'fill="{colors[group]}" fill-opacity="{opacity:.3f}" stroke="none"/>'
         )
 
-    label_candidates = [
-        (group, stat)
-        for group, stat in sorted(stats.items(), key=lambda item: -item[1]["area_um2"])
-        if group not in {"physical_only", "other", "ungrouped", "mixed"}
-    ][:6]
-    for group, stat in label_candidates:
-        x = stat["cx_um"] * scale_x
-        y = header_h + height - stat["cy_um"] * scale_y
-        lines.append(
-            f'<text x="{x:.1f}" y="{y:.1f}" font-family="Helvetica" font-size="14" '
-            f'fill="#111" text-anchor="middle">{group_label(group)}</text>'
-        )
-
-    legend_x = width + 18
+    legend_x = left_margin + width + 18
     legend_y = 26
     lines.append(
         f'<text x="{legend_x}" y="{legend_y}" font-family="Helvetica" font-size="16" font-weight="bold">Groups</text>'
@@ -454,6 +675,7 @@ def render_tiles_svg(path, diearea_db, instances, assignments, stats, colors, ti
     width = 1220
     legend_w = 260
     header_h = 40
+    left_margin = 10
     height = max(320, int(width * die_h_um / max(die_w_um, 1.0)))
     scale_x = width / max(die_w_um, 1.0)
     scale_y = height / max(die_h_um, 1.0)
@@ -484,10 +706,10 @@ def render_tiles_svg(path, diearea_db, instances, assignments, stats, colors, ti
                 tile_map[(tx, ty)][group] += overlap_x * overlap_y
 
     lines = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width + legend_w}" height="{height + header_h + 10}" viewBox="0 0 {width + legend_w} {height + header_h + 10}">',
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width + left_margin + legend_w}" height="{height + header_h + 10}" viewBox="0 0 {width + left_margin + legend_w} {height + header_h + 10}">',
         '<rect width="100%" height="100%" fill="#fbfbfc"/>',
         f'<text x="12" y="24" font-family="Helvetica" font-size="18" font-weight="bold">{title}</text>',
-        f'<rect x="0" y="{header_h}" width="{width}" height="{height}" fill="#ffffff" stroke="#222" stroke-width="1"/>',
+        f'<rect x="{left_margin}" y="{header_h}" width="{width}" height="{height}" fill="#ffffff" stroke="#222" stroke-width="1"/>',
     ]
 
     for (tx, ty), counter in sorted(tile_map.items()):
@@ -496,7 +718,7 @@ def render_tiles_svg(path, diearea_db, instances, assignments, stats, colors, ti
             continue
         group, dominant = counter.most_common(1)[0]
         fraction = dominant / total
-        x = tx * tile_size_um * scale_x
+        x = left_margin + tx * tile_size_um * scale_x
         y = header_h + height - (ty * tile_size_um + tile_size_um) * scale_y
         w = max(1.0, tile_size_um * scale_x)
         h = max(1.0, tile_size_um * scale_y)
@@ -506,7 +728,7 @@ def render_tiles_svg(path, diearea_db, instances, assignments, stats, colors, ti
             f'fill="{colors[group]}" fill-opacity="{opacity:.3f}" stroke="#ffffff" stroke-width="0.12"/>'
         )
 
-    legend_x = width + 18
+    legend_x = left_margin + width + 18
     legend_y = 26
     lines.append(
         f'<text x="{legend_x}" y="{legend_y}" font-family="Helvetica" font-size="16" font-weight="bold">Groups</text>'
@@ -528,13 +750,14 @@ def render_tiles_svg(path, diearea_db, instances, assignments, stats, colors, ti
     path.write_text("\n".join(lines) + "\n")
 
 
-def write_summary(path, def_path, netlist_path, lef_path, summary_rows, missing_masters):
+def write_summary(path, def_path, netlist_path, lef_path, depth, rows, missing_masters):
     lines = [
         "# Module Floorplan Summary",
         "",
         f"- DEF: `{def_path}`",
         f"- Netlist: `{netlist_path}`",
         f"- LEF: `{lef_path}`",
+        f"- Ownership depth: `{depth}`",
         "",
     ]
     if missing_masters:
@@ -544,18 +767,17 @@ def write_summary(path, def_path, netlist_path, lef_path, summary_rows, missing_
             lines.append(f"- `{master}`: {count} instances skipped")
         lines.append("")
 
-    for depth, rows in summary_rows.items():
-        lines.append(f"## Depth {depth}")
-        lines.append("")
-        lines.append("| Group | Cells | Area (um^2) | Area % |")
-        lines.append("| --- | ---: | ---: | ---: |")
-        total_area = sum(row["area_um2"] for row in rows)
-        for row in rows:
-            pct = 100.0 * row["area_um2"] / total_area if total_area else 0.0
-            lines.append(
-                f"| `{group_label(row['group'])}` | {row['cells']} | {row['area_um2']:.2f} | {pct:.2f} |"
-            )
-        lines.append("")
+    lines.append("## Groups")
+    lines.append("")
+    lines.append("| Group | Cells | Area (um^2) | Area % |")
+    lines.append("| --- | ---: | ---: | ---: |")
+    total_area = sum(row["area_um2"] for row in rows)
+    for row in rows:
+        pct = 100.0 * row["area_um2"] / total_area if total_area else 0.0
+        lines.append(
+            f"| `{group_label(row['group'])}` | {row['cells']} | {row['area_um2']:.2f} | {pct:.2f} |"
+        )
+    lines.append("")
 
     path.write_text("\n".join(lines) + "\n")
 
@@ -576,59 +798,75 @@ def main():
     components = parse_components(def_text)
     lef_sizes = parse_lef_sizes(lef_text)
     instances, missing_masters = build_instances(components, lef_sizes)
-    cell_info = parse_netlist_cells(netlist_text, args.depths)
+    cell_info = parse_netlist_cells(netlist_text, args.depth)
+    token_weights = build_hint_token_weights(args.hint_json, args.depth)
 
-    summary_rows = {}
-    for depth in args.depths:
-        propagated = propagate_assignments(cell_info=cell_info, depth=depth)
-        collapsed = collapse_groups(
+    propagated = propagate_assignments(cell_info=cell_info, depth=args.depth)
+    hinted = dict(propagated)
+    signal_seed_assignments = build_signal_seed_assignments(
+        cell_info=cell_info,
+        direct_assignments=hinted,
+        token_weights=token_weights,
+        depth=args.depth,
+    )
+    for instance, group in signal_seed_assignments.items():
+        hinted[instance] = group
+
+    hinted = propagate_hint_assignments(
+        cell_info=cell_info,
+        assignments=hinted,
+        depth=args.depth,
+    )
+    collapsed = collapse_groups(
+        instances=instances,
+        assignments=hinted,
+        top_groups=args.top_groups,
+    )
+    stats = group_stats(instances, collapsed)
+    group_names = [
+        group
+        for group, _ in sorted(stats.items(), key=lambda item: (-item[1]["area_um2"], item[0]))
+    ]
+    colors = make_color_map(group_names)
+
+    rows = []
+    for group, stat in sorted(stats.items(), key=lambda item: (-item[1]["area_um2"], item[0])):
+        rows.append({"group": group, "cells": stat["cells"], "area_um2": stat["area_um2"]})
+
+    if args.render in {"cells", "both"}:
+        render_cells_svg(
+            path=out_dir / "module_floorplan_cells.svg",
+            diearea_db=diearea_db,
             instances=instances,
-            assignments=propagated,
-            top_groups=args.top_groups,
+            assignments=collapsed,
+            stats=stats,
+            colors=colors,
+            title=f"Recovered floorplan ownership (exact cells, depth {args.depth})",
         )
-        stats = group_stats(instances, collapsed)
-        group_names = [
-            group
-            for group, _ in sorted(stats.items(), key=lambda item: (-item[1]["area_um2"], item[0]))
-        ]
-        colors = make_color_map(group_names)
-
-        rows = []
-        for group, stat in sorted(stats.items(), key=lambda item: (-item[1]["area_um2"], item[0])):
-            rows.append({"group": group, "cells": stat["cells"], "area_um2": stat["area_um2"]})
-        summary_rows[depth] = rows
-
-        if args.render in {"cells", "both"}:
-            render_cells_svg(
-                path=out_dir / f"module_floorplan_depth{depth}_cells.svg",
-                diearea_db=diearea_db,
-                instances=instances,
-                assignments=collapsed,
-                stats=stats,
-                colors=colors,
-                title=f"Module floorplan by hierarchy depth {depth} (exact cells)",
-            )
-        if args.render in {"tiles", "both"}:
-            render_tiles_svg(
-                path=out_dir / f"module_floorplan_depth{depth}_tiles.svg",
-                diearea_db=diearea_db,
-                instances=instances,
-                assignments=collapsed,
-                stats=stats,
-                colors=colors,
-                title=f"Module floorplan by hierarchy depth {depth} (tile view)",
-                tile_size_um=args.tile_size_um,
-            )
+    if args.render in {"tiles", "both"}:
+        render_tiles_svg(
+            path=out_dir / "module_floorplan_tiles.svg",
+            diearea_db=diearea_db,
+            instances=instances,
+            assignments=collapsed,
+            stats=stats,
+            colors=colors,
+            title=f"Recovered floorplan ownership (tile view, depth {args.depth})",
+            tile_size_um=args.tile_size_um,
+        )
 
     write_summary(
         path=out_dir / "summary.md",
         def_path=def_path,
         netlist_path=netlist_path,
         lef_path=lef_path,
-        summary_rows=summary_rows,
+        depth=args.depth,
+        rows=rows,
         missing_masters=missing_masters,
     )
-    (out_dir / "summary.json").write_text(json.dumps(summary_rows, indent=2) + "\n")
+    (out_dir / "summary.json").write_text(
+        json.dumps({"depth": args.depth, "groups": rows}, indent=2) + "\n"
+    )
 
 
 if __name__ == "__main__":
