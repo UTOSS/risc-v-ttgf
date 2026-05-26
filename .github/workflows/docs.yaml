@@ -19,8 +19,8 @@ jobs:
       - name: sv2v
         run: make sv2v
 
-      - name: dbg
-        run: cd src/utoss-risc-v/src && ls Instruction_Decode
+      - name: hack
+        run: touch src/utoss-risc-v/src/Instruction_Decode/RegisterFile.sv2v.v
 
       - name: Build docs
         uses: TinyTapeout/tt-gds-action/docs@ttgf26a
