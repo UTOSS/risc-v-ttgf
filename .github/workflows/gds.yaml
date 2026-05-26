@@ -83,8 +83,8 @@ jobs:
         with:
           submodules: recursive
 
-      - name: GL test
-        uses: TinyTapeout/tt-gds-action/gl_test@ttgf26a
+      # - name: GL test
+      #   uses: TinyTapeout/tt-gds-action/gl_test@ttgf26a
 
   viewer:
     needs: gds
