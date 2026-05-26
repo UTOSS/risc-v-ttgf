@@ -37,6 +37,10 @@
   "VERILOG_INCLUDE_DIRS": ["src/utoss-risc-v"],
   "VERILOG_DEFINES": ["UTOSS_RISCV_HARDENING"],
 
+  "//": "Attempt to fix attennas more agressively",
+  "GRT_ANTENNA_ITERS": 20,
+  "DIODE_PADDING": 20,
+
   "//": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
   "//": "!!! DO NOT CHANGE ANYTHING BELOW THIS POINT !!!",
   "//": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
