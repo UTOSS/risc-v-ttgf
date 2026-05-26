@@ -73,6 +73,10 @@ module tt_um_utoss_riscv (
 
   logic hold_core;
 
+  // Temporary: pass zeros to dbg_regs to test if high fanout is the issue
+  logic [31:0] dbg_regs_zeros [0:31];
+  assign dbg_regs_zeros = '{default: 32'b0};
+
   uart_bus_master u_master (
         .clk                 ( clk              )
       , .rst                 ( ~rst_n           )
@@ -86,8 +90,8 @@ module tt_um_utoss_riscv (
       , .bus_write_data      ( dbg_write_data   )
       , .bus_write_enable    ( dbg_write_enable )
       , .bus_read_data       ( read_data        )
-      , .dbg_regs            ( dbg_regs         )
-      , .dbg_pc              ( dbg_pc           )
+      // , .dbg_regs            ( dbg_regs_zeros   )
+      , .dbg_pc              ( 32'b0            )
       , .hold_core           ( hold_core        )
   );
 
