@@ -1,4 +1,7 @@
 ARG VARIANT=ubuntu-22.04
+
+FROM ghcr.io/utoss/oss-cad-suite:latest AS oss-cad-suite
+
 FROM mcr.microsoft.com/vscode/devcontainers/base:${VARIANT}
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -42,3 +45,8 @@ RUN mkdir /tmp/sv2v && \
 
 # Install LibreLane (pinned to latest known stable)
 RUN pip3 install librelane==3.0.3
+
+# Copy OSS CAD Suite installation from prebuilt image
+COPY --from=oss-cad-suite /opt/oss-cad-suite /opt/oss-cad-suite
+COPY --from=oss-cad-suite /etc/profile.d/oss-cad-suite.sh /etc/profile.d/oss-cad-suite.sh
+ENV PATH="/opt/oss-cad-suite/bin:${PATH}"
