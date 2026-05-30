@@ -29,26 +29,26 @@ jobs:
       - name: sv2v
         run: make sv2v
 
-      # - name: Run tests
-      #   run: |
-      #     cd test
-      #     make clean
-      #     make
-      #     # make will return success even if the test fails, so check for failure in the results.xml
-      #     ! grep failure results.xml
+      - name: Run tests
+        run: |
+          cd test
+          make clean
+          make
+          # make will return success even if the test fails, so check for failure in the results.xml
+          ! grep failure results.xml
 
-      # - name: Test Summary
-      #   uses: test-summary/action@v2.4
-      #   with:
-      #     paths: "test/results.xml"
-      #   if: always()
+      - name: Test Summary
+        uses: test-summary/action@v2.4
+        with:
+          paths: "test/results.xml"
+        if: always()
 
-      # - name: upload waveform and test results
-      #   if: success() || failure()
-      #   uses: actions/upload-artifact@v7
-      #   with:
-      #     name: test-results
-      #     path: |
-      #       test/tb.fst
-      #       test/results.xml
-      #       test/output/*
+      - name: upload waveform and test results
+        if: success() || failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results
+          path: |
+            test/tb.fst
+            test/results.xml
+            test/output/*
