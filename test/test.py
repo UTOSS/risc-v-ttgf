@@ -120,7 +120,7 @@ class UartBridge:
                     value |= current_bit << bit_index
                     await ClockCycles(self.dut.clk, CLOCKS_PER_BIT)
 
-                await ClockCycles(self.dut.clk, CLOCKS_PER_BIT)
+                # After 8 data-bit samples we are already at the center of the stop bit.
                 stop_bit = (int(self.dut.uo_out.value) >> 4) & 1
                 assert stop_bit == 1, "UART stop bit was not high"
                 self.rx_buffer.append(value)

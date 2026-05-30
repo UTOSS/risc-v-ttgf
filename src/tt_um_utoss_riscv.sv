@@ -91,7 +91,8 @@ module tt_um_utoss_riscv (
       , .hold_core           ( hold_core        )
   );
 
-  wire core_reset = ~rst_n | hold_core;
+  wire core_clk = clk & ~hold_core;
+  wire core_reset = ~rst_n;
 
   addr_t bus_addr;
   data_t bus_write_data;
@@ -111,7 +112,7 @@ module tt_um_utoss_riscv (
       );
 
   utoss_riscv core
-    ( .clk                 ( clk                  )
+    ( .clk                 ( core_clk             )
     , .reset               ( core_reset           )
     , .memory__address     ( core_addr            )
     , .memory__write_data  ( core_write_data      )
