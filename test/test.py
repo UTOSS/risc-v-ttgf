@@ -82,6 +82,7 @@ class UartBridge:
     def __init__(self, dut):
         self.dut = dut
         self.rx_buffer = []
+        self._monitor_active = False
 
     def set_rxd_idle(self):
         self.dut.ui_in.value = 0x08
@@ -106,7 +107,8 @@ class UartBridge:
     async def monitor_tx(self):
         previous_bit = 1
 
-        while True:
+        self._monitor_active = True
+        while self._monitor_active:
             await RisingEdge(self.dut.clk)
             await ReadOnly()
 
@@ -124,8 +126,10 @@ class UartBridge:
                 stop_bit = (int(self.dut.uo_out.value) >> 4) & 1
                 assert stop_bit == 1, "UART stop bit was not high"
                 self.rx_buffer.append(value)
-
             previous_bit = current_bit
+
+    def stop_monitor(self):
+        self._monitor_active = False
 
     async def recv_byte(self):
         while not self.rx_buffer:
@@ -201,9 +205,9 @@ async def reset_dut(dut):
     dut.uio_in.value = 0
     dut.ui_in.value = 0x08
     dut.rst_n.value = 0
-    await ClockCycles(dut.clk, 10)
+    await ClockCycles(dut.clk, 100)
     dut.rst_n.value = 1
-    await ClockCycles(dut.clk, 10)
+    await ClockCycles(dut.clk, 100)
 
 
 @cocotb.test()
@@ -211,7 +215,9 @@ async def test_uart_core_bridge(dut):
     dut._log.info("Starting UART-to-core integration test")
 
     clock = Clock(dut.clk, 20, unit="ns")
-    cocotb.start_soon(clock.start())
+    if not hasattr(dut, "_clock_started"):
+        cocotb.start_soon(clock.start())
+        dut._clock_started = True
 
     await reset_dut(dut)
 
@@ -266,3 +272,4 @@ async def test_uart_core_bridge(dut):
     assert pc != 0, "Program counter did not advance after RUN"
 
     dut._log.info("UART/core bridge test completed successfully")
+    bridge.stop_monitor()
