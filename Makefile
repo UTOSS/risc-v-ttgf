@@ -12,10 +12,19 @@ sv2v:
 	@sv2v $(INCLUDE_FLAGS) $(DEFINE_FLAGS) $(SV_FILES) -w .sv2v_temp
 	@for svfile in $(SV_FILES); do \
 		module_name=$$(basename "$$svfile" .sv); \
-		if [ -f ".sv2v_temp/$$module_name.v" ]; then \
-			mv ".sv2v_temp/$$module_name.v" "$$(dirname "$$svfile")/$$module_name.sv2v.v"; \
+		generated_file=$$(find .sv2v_temp -maxdepth 1 -type f -iname "$$module_name.v" | head -n 1); \
+		if [ -n "$$generated_file" ]; then \
+			mv "$$generated_file" "$$(dirname "$$svfile")/$$module_name.sv2v.v"; \
 		fi; \
 	done
+	@missing=0; \
+	for relpath in $$(sed -n 's/^[[:space:]]*-[[:space:]]*"\(.*\.sv2v\.v\)".*/\1/p' info.yaml); do \
+		if [ ! -f "src/$$relpath" ]; then \
+			echo "ERROR: Expected generated file missing: src/$$relpath" >&2; \
+			missing=1; \
+		fi; \
+	done; \
+	test $$missing -eq 0
 	@rm -rf .sv2v_temp
 
 tt: sv2v

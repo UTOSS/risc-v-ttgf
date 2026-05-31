@@ -47,8 +47,6 @@ jobs:
 
   gds:
     runs-on: ubuntu-24.04
-    container:
-      image: ghcr.io/utoss/risc-v-ttgf-devcontainer:latest
     # Only run when manually triggered, on main branch, or when the 'run-gds' label is present on the PR
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'run-gds')
     steps:
