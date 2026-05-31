@@ -42,8 +42,11 @@ module tt_um_utoss_riscv (
   data_t core_write_data;
   logic [3:0] core_write_enable;
 
-  logic [31:0] dbg_regs [0:31];
+  //logic [31:0] dbg_regs [0:31];
   addr_t       dbg_pc;
+  logic [4:0]  dbg_reg_addr;
+  logic        dbg_reg_read_en;
+  logic [31:0] dbg_reg_read_data;
 
   uart  #(
         .DATA_WIDTH(8)
@@ -86,12 +89,15 @@ module tt_um_utoss_riscv (
       , .bus_write_data      ( dbg_write_data   )
       , .bus_write_enable    ( dbg_write_enable )
       , .bus_read_data       ( read_data        )
-      , .dbg_regs            ( dbg_regs         )
-      , .dbg_pc              ( 32'b0            )
+      , .dbg_pc              ( dbg_pc           )
+      , .dbg_reg_addr        ( dbg_reg_addr      )
+      , .dbg_reg_read_en     ( dbg_reg_read_en   )
+      , .dbg_reg_read_data   ( dbg_reg_read_data )
       , .hold_core           ( hold_core        )
   );
 
-  wire core_clk = clk & ~hold_core;
+//wire core_clk = clk & ~hold_core;  // combinational delay
+  wire core_stall = hold_core;
   wire core_reset = ~rst_n;
 
   addr_t bus_addr;
@@ -112,14 +118,17 @@ module tt_um_utoss_riscv (
       );
 
   utoss_riscv core
-    ( .clk                 ( core_clk             )
+    ( .clk                 ( clk                  )
     , .reset               ( core_reset           )
+    , .stall               ( core_stall           )
     , .memory__address     ( core_addr            )
     , .memory__write_data  ( core_write_data      )
     , .memory__write_enable( core_write_enable    )
     , .memory__read_data   ( read_data            )
-    , .dbg_regs            ( dbg_regs             )
     , .dbg_pc              ( dbg_pc               )
+    , .dbg_reg_addr        ( dbg_reg_addr         )
+    , .dbg_reg_read_en     ( dbg_reg_read_en      )
+    , .dbg_reg_read_data   ( dbg_reg_read_data    )
     );
 
 endmodule
