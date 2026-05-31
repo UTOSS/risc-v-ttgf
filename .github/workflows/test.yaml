@@ -1,8 +1,12 @@
 name: test
 on:
-  workflow_run:
-    workflows: ["setup"]
-    types: [completed]
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, labeled, synchronize]
+  workflow_dispatch:
+
 jobs:
   test:
     runs-on: ubuntu-24.04
