@@ -18,12 +18,6 @@ jobs:
         with:
           submodules: recursive
 
-      # Set Python up and install cocotb
-      - name: Setup python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-
       - name: Install Python packages
         shell: bash
         run: pip install -r test/requirements.txt
