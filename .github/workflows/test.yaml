@@ -3,15 +3,13 @@ on: [push, workflow_dispatch]
 jobs:
   test:
     runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/utoss/oss-cad-suite:latest
     steps:
       - name: Checkout repo
         uses: actions/checkout@v6
         with:
           submodules: recursive
-
-      - name: Install iverilog
-        shell: bash
-        run: sudo apt-get update && sudo apt-get install -y iverilog
 
       # Set Python up and install cocotb
       - name: Setup python
