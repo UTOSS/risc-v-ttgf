@@ -1,18 +1,14 @@
 name: test
-on: [push, workflow_dispatch]
+on:
+  workflow_run:
+    workflows: ["setup"]
+    types: [completed]
 jobs:
   test:
     runs-on: ubuntu-24.04
     container:
-      image: ghcr.io/utoss/oss-cad-suite:latest
+      image: ghcr.io/utoss/risc-v-ttgf-devcontainer:latest
     steps:
-      - name: Install git
-        shell: bash
-        run: |
-          set -eux
-          apt-get update
-          apt-get install -y git
-
       - name: Checkout repo
         uses: actions/checkout@v6
         with:
@@ -27,9 +23,6 @@ jobs:
       - name: Install Python packages
         shell: bash
         run: pip install -r test/requirements.txt
-
-      - name: Install sv2v
-        uses: ./.github/actions/install-sv2v
 
       - name: sv2v
         run: make sv2v
