@@ -6,6 +6,13 @@ jobs:
     container:
       image: ghcr.io/utoss/oss-cad-suite:latest
     steps:
+      - name: Install git
+        shell: bash
+        run: |
+          set -eux
+          apt-get update
+          apt-get install -y git
+
       - name: Checkout repo
         uses: actions/checkout@v6
         with:
