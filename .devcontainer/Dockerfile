@@ -40,5 +40,5 @@ RUN mkdir /tmp/sv2v && \
     chmod +x sv2v-Linux/sv2v && sudo cp sv2v-Linux/sv2v /usr/local/bin && \
     cd .. && rm -r /tmp/sv2v
 
-# Install LibreLane
-RUN pip3 install librelane==2.4.2
+# Install LibreLane (pinned to latest known stable)
+RUN pip3 install librelane==3.0.3
