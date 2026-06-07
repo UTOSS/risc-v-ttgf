@@ -21,7 +21,7 @@ echo "Running GL test with Icarus Verilog..."
 echo "PDK_ROOT: $PDK_ROOT"
 echo ""
 
-TESTBENCH="tb.sv"
+TESTBENCH="tb_gl.sv"
 NETLIST="gate_level_netlist.v"
 SIMV="simv_gl"
 LOGFILE="gl_test.log"
