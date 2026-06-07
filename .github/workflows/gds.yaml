@@ -88,8 +88,51 @@ jobs:
         with:
           submodules: recursive
 
-      - name: GL test
-        uses: TinyTapeout/tt-gds-action/gl_test@ttgf26a
+      - name: Download GDS artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: tt_submission
+
+      - name: Enable PDK
+        shell: bash
+        env:
+          PDK_ROOT: /home/runner/pdk
+          PDK_VERSION: 54435919abffb937387ec956209f9cf5fd2dfbee
+        run: |
+          python3 -m ciel enable --pdk-family gf180mcu --pdk-root "$PDK_ROOT" "$PDK_VERSION"
+
+      - name: Install Python packages
+        shell: bash
+        run: python3 -m pip install -r test/requirements.txt
+
+      - name: Run GL test
+        shell: bash
+        env:
+          PDK_ROOT: /home/runner/pdk
+        run: |
+          cp tt_submission/*.v test/gate_level_netlist.v
+          cd test
+          rm -f tb.vcd tb.fst results.xml
+          make clean
+          GATES=yes make
+          ! grep failure results.xml
+
+      - name: Test Summary
+        uses: test-summary/action@v2.6
+        with:
+          paths: test/results.xml
+        if: always()
+
+      - name: Upload Waveform and Test Results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: gatelevel_test_results
+          path: |
+            test/tb.vcd
+            test/tb.fst
+            test/results.xml
+            test/output/*
 
   viewer:
     needs: gds
