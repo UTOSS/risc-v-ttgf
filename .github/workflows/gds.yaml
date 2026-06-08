@@ -61,6 +61,9 @@ jobs:
       - name: sv2v
         run: make sv2v
 
+      - name: check file
+        run: ls -la src/utoss-risc-v/src/Instruction_Decode
+
       - name: Build GDS
         uses: TinyTapeout/tt-gds-action@ttgf26a
         with:
@@ -77,14 +80,45 @@ jobs:
   gl_test:
     needs: gds
     runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/utoss/risc-v-ttgf-devcontainer:latest
     steps:
       - name: checkout repo
         uses: actions/checkout@v6
         with:
           submodules: recursive
 
-      - name: GL test
-        uses: TinyTapeout/tt-gds-action/gl_test@ttgf26a
+      - name: Download GDS artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: tt_submission
+
+      - name: Enable PDK
+        shell: bash
+        env:
+          PDK_ROOT: /home/runner/pdk
+          PDK_VERSION: 54435919abffb937387ec956209f9cf5fd2dfbee
+        run: |
+          python3 -m ciel enable --pdk-family gf180mcu --pdk-root "$PDK_ROOT" "$PDK_VERSION"
+
+      - name: Run GL test
+        shell: bash
+        env:
+          PDK_ROOT: /home/runner/pdk
+        run: |
+          cp tt_submission/*.v test/gate_level_netlist.v
+          cd test
+          rm -f tb_gl.vcd tb.fst gl_test.log simv_gl
+          bash run_gl_icarus.sh
+
+      - name: Upload Waveform and Test Results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: gatelevel_test_results
+          path: |
+            test/tb_gl.vcd
+            test/gl_test.log
 
   viewer:
     needs: gds

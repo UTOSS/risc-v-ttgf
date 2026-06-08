@@ -1,30 +1,26 @@
 name: test
-on: [push, workflow_dispatch]
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, labeled, synchronize]
+  workflow_dispatch:
+
 jobs:
   test:
     runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/utoss/risc-v-ttgf-devcontainer:latest
     steps:
       - name: Checkout repo
         uses: actions/checkout@v6
         with:
           submodules: recursive
 
-      - name: Install iverilog
-        shell: bash
-        run: sudo apt-get update && sudo apt-get install -y iverilog
-
-      # Set Python up and install cocotb
-      - name: Setup python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-
       - name: Install Python packages
         shell: bash
         run: pip install -r test/requirements.txt
-
-      - name: Install sv2v
-        uses: ./.github/actions/install-sv2v
 
       - name: sv2v
         run: make sv2v

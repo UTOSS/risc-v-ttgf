@@ -2,11 +2,11 @@
 # See https://docs.cocotb.org/en/stable/quickstart.html for more info
 
 # defaults
-SIM ?= icarus
+SIM ?= verilator
 FST ?= -fst # Use more efficient FST format
 TOPLEVEL_LANG ?= verilog
 SRC_DIR = $(PWD)/../src
-PROJECT_SOURCES = tt_um_utoss_riscv.sv MA.sv utoss-risc-v/src/ALU_ALUdecoder/ALU.sv utoss-risc-v/src/ALU_ALUdecoder/ALUdecoder.sv utoss-risc-v/src/ControlFSM.sv utoss-risc-v/src/fetch.sv utoss-risc-v/src/Instruction_Decode/Instruction_Decode.sv utoss-risc-v/src/Instruction_Decode/MemoryLoader.sv utoss-risc-v/src/Instruction_Decode/registerFile.v utoss-risc-v/src/params.svh utoss-risc-v/src/types.svh utoss-risc-v/src/utils.svh utoss-risc-v/src/utoss_riscv.sv
+PROJECT_SOURCES = tt_um_utoss_riscv.sv MA.sv utoss-risc-v/src/ALU_ALUdecoder/ALU.sv utoss-risc-v/src/ALU_ALUdecoder/ALUdecoder.sv utoss-risc-v/src/ControlFSM.sv utoss-risc-v/src/fetch.sv utoss-risc-v/src/Instruction_Decode/Instruction_Decode.sv utoss-risc-v/src/Instruction_Decode/MemoryLoader.sv utoss-risc-v/src/Instruction_Decode/RegisterFile.sv utoss-risc-v/src/params.svh utoss-risc-v/src/types.svh utoss-risc-v/src/utils.svh utoss-risc-v/src/uart.sv utoss-risc-v/src/uart_tx.sv utoss-risc-v/src/uart_rx.sv utoss-risc-v/src/uart_bus_master.sv utoss-risc-v/src/utoss_riscv.sv
 COMPILE_ARGS += -DUTOSS_RISCV_HARDENING
 
 ifneq ($(GATES),yes)
@@ -14,6 +14,9 @@ ifneq ($(GATES),yes)
 # RTL simulation:
 SIM_BUILD				= sim_build/rtl
 VERILOG_SOURCES += $(addprefix $(SRC_DIR)/,$(PROJECT_SOURCES))
+ifeq ($(SIM),verilator)
+COMPILE_ARGS += --timing -Wno-fatal -Wno-WIDTHTRUNC -Wno-WIDTHEXPAND
+endif
 
 else
 
@@ -24,6 +27,9 @@ COMPILE_ARGS    += -DFUNCTIONAL
 COMPILE_ARGS    += -DUSE_POWER_PINS
 COMPILE_ARGS    += -DSIM
 COMPILE_ARGS    += -DUNIT_DELAY=\#1
+ifeq ($(SIM),verilator)
+COMPILE_ARGS += -Wno-fatal
+endif
 VERILOG_SOURCES += $(PDK_ROOT)/gf180mcuD/libs.ref/gf180mcu_fd_sc_mcu7t5v0/verilog/primitives.v
 VERILOG_SOURCES += $(PDK_ROOT)/gf180mcuD/libs.ref/gf180mcu_fd_sc_mcu7t5v0/verilog/gf180mcu_fd_sc_mcu7t5v0.v
 
@@ -35,12 +41,19 @@ endif
 # Allow sharing configuration between design and testbench via `include`:
 COMPILE_ARGS 		+= -I$(SRC_DIR) -I$(SRC_DIR)/utoss-risc-v
 
-# Include the testbench sources:
-VERILOG_SOURCES += $(PWD)/tb.sv
-TOPLEVEL = tb
+# Allow overriding which testbench file is used via TOPLEVEL (command-line)
+TOPLEVEL ?= tb
+
+# Include the testbench sources (use TOPLEVEL variable so tb_uart.sv can be selected):
+VERILOG_SOURCES += $(PWD)/$(TOPLEVEL).sv
+
 
 # List test modules to run, separated by commas and without the .py suffix:
 COCOTB_TEST_MODULES = test
 
 # include cocotb's make rules to take care of the simulator setup
 include $(shell cocotb-config --makefiles)/Makefile.sim
+
+.PHONY: test_uart
+test_uart:
+	$(MAKE) COCOTB_TEST_MODULES=test_uart TOPLEVEL=tb_uart

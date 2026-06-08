@@ -1,19 +1,18 @@
 `default_nettype none
 `timescale 1ns / 1ps
 
-/* This testbench just instantiates the module and makes some convenient wires
-   that can be driven / tested by the cocotb test.py.
+/* This testbench provides signal wires for cocotb stimulus and inspection.
+   For cocotb-free gate-level testing, use the run_gl_icarus.sh script.
 */
 module tb ();
 
-  // Dump the signals to a FST file. You can view it with gtkwave or surfer.
+  // Waveform dump
   initial begin
     $dumpfile("tb.fst");
     $dumpvars(0, tb);
-    #1;
   end
 
-  // Wire up the inputs and outputs:
+  // Wire up the inputs and outputs for cocotb control:
   reg clk;
   reg rst_n;
   reg ena;
@@ -22,20 +21,9 @@ module tb ();
   wire [7:0] uo_out;
   wire [7:0] uio_out;
   wire [7:0] uio_oe;
-`ifdef GL_TEST
-  wire VPWR = 1'b1;
-  wire VGND = 1'b0;
-`endif
 
-  // Replace tt_um_example with your module name:
+  // Instantiate the design:
   tt_um_utoss_riscv dut (
-
-      // Include power ports for the Gate Level test:
-`ifdef GL_TEST
-      .VPWR(VPWR),
-      .VGND(VGND),
-`endif
-
       .ui_in  (ui_in),    // Dedicated inputs
       .uo_out (uo_out),   // Dedicated outputs
       .uio_in (uio_in),   // IOs: Input path
